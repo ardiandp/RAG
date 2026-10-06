@@ -43,7 +43,7 @@ class KnowledgeTool implements ToolInterface
 
     public function permission(): ?string
     {
-        return null;
+        return 'knowledge.view';
     }
 
     /**

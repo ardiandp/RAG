@@ -31,7 +31,7 @@ class CustomerTool implements ToolInterface
 
     public function permission(): ?string
     {
-        return null;
+        return 'customer.view';
     }
 
     /**

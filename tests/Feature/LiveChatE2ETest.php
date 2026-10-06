@@ -4,14 +4,24 @@ namespace Tests\Feature;
 
 use App\Models\Conversation;
 use App\Models\SalesOrder;
+use App\Models\User;
 use App\Services\KnowledgeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 class LiveChatE2ETest extends TestCase
 {
     use RefreshDatabase;
+
+    private function actingAsAdmin(): User
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs($admin);
+
+        return $admin;
+    }
 
     /**
      * Live end-to-end test: routes through the HTTP kernel against the
@@ -26,6 +36,8 @@ class LiveChatE2ETest extends TestCase
         if (getenv('OLLAMA_LIVE_TEST') !== 'true') {
             $this->markTestSkipped('Set OLLAMA_LIVE_TEST=true untuk menjalankan E2E live.');
         }
+
+        $this->actingAsAdmin();
 
         $response = $this->postJson('/api/chat', [
             'message' => 'Jawab dalam satu kalimat: Apa itu PostgreSQL?',
@@ -52,6 +64,8 @@ class LiveChatE2ETest extends TestCase
         if (getenv('OLLAMA_LIVE_TEST') !== 'true') {
             $this->markTestSkipped('Set OLLAMA_LIVE_TEST=true untuk menjalankan E2E live.');
         }
+
+        $this->actingAsAdmin();
 
         SalesOrder::create([
             'order_number' => 'SO-LIVE-1',
@@ -96,6 +110,8 @@ class LiveChatE2ETest extends TestCase
         if (getenv('OLLAMA_LIVE_TEST') !== 'true') {
             $this->markTestSkipped('Set OLLAMA_LIVE_TEST=true untuk menjalankan E2E live.');
         }
+
+        $this->actingAsAdmin();
 
         $content = "SOP PENGEMBALIAN PRODUK (RETUR)\n".
             "1. Pelanggan dapat mengajukan retur maksimal 7 hari setelah menerima produk.\n".

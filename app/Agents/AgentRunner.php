@@ -5,8 +5,12 @@ namespace App\Agents;
 use App\Models\Agent;
 use App\Models\AgentRun;
 use App\Models\Conversation;
+use App\Models\User;
+use App\Services\AuditService;
 use App\Services\OllamaService;
 use App\Tools\ToolRegistry;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
@@ -17,19 +21,25 @@ class AgentRunner
     public function __construct(
         private readonly OllamaService $ollama,
         private readonly ToolRegistry $registry,
+        private readonly AuditService $audit,
     ) {}
 
     /**
-     * @param  array{message: string, conversation_id?: int, agent_id?: int}  $input
+     * @param  array{message: string, conversation_id?: int, agent_id?: int, user_id?: int}  $input
      * @return array{answer: string, run_id: int, conversation_id: int, status: string, steps: int}
      */
     public function run(array $input): array
     {
         $message = $input['message'];
+        $userId = isset($input['user_id']) ? (int) $input['user_id'] : null;
 
         $conversation = isset($input['conversation_id'])
             ? Conversation::findOrFail($input['conversation_id'])
-            : Conversation::create(['title' => str($message)->limit(60)]);
+            : Conversation::create(['title' => str($message)->limit(60), 'user_id' => $userId]);
+
+        $this->assertOwnership($conversation, $userId);
+
+        $user = $conversation->user;
 
         $agent = isset($input['agent_id'])
             ? Agent::find($input['agent_id'])
@@ -46,6 +56,11 @@ class AgentRunner
             'steps' => 0,
             'max_steps' => $maxSteps,
             'started_at' => now(),
+        ]);
+
+        $this->audit->log('agent_run.started', $user, [
+            'conversation_id' => $conversation->id,
+            'run_id' => $run->id,
         ]);
 
         $conversation->messages()->create([
@@ -93,7 +108,7 @@ class AgentRunner
                 $name = (string) data_get($call, 'function.name', '');
                 $arguments = $this->decodeArguments(data_get($call, 'function.arguments', '{}'));
 
-                [$result, $status, $error, $durationMs] = $this->executeTool($name, $arguments, $steps);
+                [$result, $status, $error, $durationMs] = $this->executeTool($name, $arguments, $steps, $user);
 
                 $run->toolCalls()->create([
                     'tool_name' => $name,
@@ -104,6 +119,15 @@ class AgentRunner
                     'duration_ms' => $durationMs,
                     'step' => $steps,
                 ]);
+
+                if ($status === 'denied') {
+                    $this->audit->log('tool_call.denied', $user, [
+                        'conversation_id' => $conversation->id,
+                        'run_id' => $run->id,
+                        'tool_name' => $name,
+                        'step' => $steps,
+                    ]);
+                }
 
                 $history[] = [
                     'role' => 'tool',
@@ -130,6 +154,13 @@ class AgentRunner
             'finished_at' => now(),
         ]);
 
+        $this->audit->log('agent_run.finished', $user, [
+            'conversation_id' => $conversation->id,
+            'run_id' => $run->id,
+            'status' => $status,
+            'steps' => $steps,
+        ]);
+
         return [
             'answer' => $finalContent,
             'run_id' => $run->id,
@@ -137,6 +168,13 @@ class AgentRunner
             'status' => $status,
             'steps' => $steps,
         ];
+    }
+
+    private function assertOwnership(Conversation $conversation, ?int $userId): void
+    {
+        if ($userId !== null && $conversation->user_id !== null && (int) $conversation->user_id !== $userId) {
+            throw new AuthorizationException('Conversation ini milik pengguna lain.');
+        }
     }
 
     /**
@@ -198,12 +236,21 @@ class AgentRunner
     /**
      * @return array{0: array<string, mixed>, 1: string, 2: string|null, 3: int}
      */
-    private function executeTool(string $name, array $arguments, int $step): array
+    private function executeTool(string $name, array $arguments, int $step, ?User $user): array
     {
         $started = hrtime(true);
 
         try {
             $tool = $this->registry->findOrFail($name);
+
+            $permission = $tool->permission();
+
+            if ($permission !== null && (($user === null) || Gate::forUser($user)->denies($permission))) {
+                $error = "Akses ditolak: diperlukan izin '{$permission}'.";
+
+                return [['error' => $error], 'denied', $error, 0];
+            }
+
             $result = $tool->execute($arguments);
             $durationMs = (int) round((hrtime(true) - $started) / 1_000_000);
 

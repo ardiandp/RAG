@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\User;
 use App\Services\EmbeddingService;
 use App\Services\KnowledgeService;
 use App\Services\OllamaService;
@@ -10,6 +11,7 @@ use App\Tools\KnowledgeTool;
 use App\Tools\ProductTool;
 use App\Tools\SalesTool;
 use App\Tools\ToolRegistry;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -55,6 +57,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Gate::define('sales.view', fn (User $user) => $user->role === 'admin');
+        Gate::define('customer.view', fn (User $user) => $user->role === 'admin');
+        Gate::define('knowledge.view', fn (User $user) => $user->role === 'admin');
     }
 }

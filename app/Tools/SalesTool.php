@@ -37,7 +37,7 @@ class SalesTool implements ToolInterface
 
     public function permission(): ?string
     {
-        return null;
+        return 'sales.view';
     }
 
     /**

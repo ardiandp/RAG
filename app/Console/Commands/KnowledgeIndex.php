@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\AuditService;
 use App\Services\KnowledgeService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -14,7 +15,7 @@ class KnowledgeIndex extends Command
     /**
      * Execute the console command.
      */
-    public function handle(KnowledgeService $knowledge): int
+    public function handle(KnowledgeService $knowledge, AuditService $audit): int
     {
         $file = $this->argument('file');
 
@@ -45,6 +46,12 @@ class KnowledgeIndex extends Command
         );
 
         $this->info("Selesai: {$document->chunks()->count()} chunk dari dokumen #{$document->id} disimpan.");
+
+        $audit->log('knowledge.document_indexed', context: [
+            'document_id' => $document->id,
+            'chunks' => $document->chunks()->count(),
+            'source' => $document->source->name,
+        ]);
 
         return self::SUCCESS;
     }

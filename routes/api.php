@@ -1,10 +1,16 @@
 <?php
 
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ConversationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/chat', [ChatController::class, 'handle']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/chat', [ChatController::class, 'handle']);
+
+    Route::get('/conversations', [ConversationController::class, 'index']);
+    Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
+});
 
 Route::get('/user', function (Request $request) {
     return $request->user();
