@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Conversation;
 use App\Models\SalesOrder;
+use App\Services\KnowledgeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -83,5 +84,48 @@ class LiveChatE2ETest extends TestCase
         $this->assertTrue($run->toolCalls->isNotEmpty(), 'Agent seharusnya memanggil tool.');
         $this->assertSame('get_sales_summary', $run->toolCalls->first()->tool_name);
         $this->assertSame('success', $run->toolCalls->first()->status);
+    }
+
+    /**
+     * Live RAG flow: index a document with real embeddings, then make the
+     * agent use search_knowledge to answer from the knowledge base.
+     */
+    #[Test]
+    public function agent_uses_search_knowledge_tool_to_answer(): void
+    {
+        if (getenv('OLLAMA_LIVE_TEST') !== 'true') {
+            $this->markTestSkipped('Set OLLAMA_LIVE_TEST=true untuk menjalankan E2E live.');
+        }
+
+        $content = "SOP PENGEMBALIAN PRODUK (RETUR)\n".
+            "1. Pelanggan dapat mengajukan retur maksimal 7 hari setelah menerima produk.\n".
+            "2. Produk harus dalam kondisi baik, tanpa kerusakan fisik, dan lengkap dengan kemasan asli.\n".
+            "3. Pengajuan retur ditinjau oleh tim layanan pelanggan maksimal 3 hari kerja.\n".
+            "4. Keputusan retur disampaikan melalui email terdaftar pelanggan.\n".
+            "5. Dana pengembalian diproses maksimal 5 hari kerja setelah retur disetujui.\n".
+            "6. Khusus Program Perlindungan Zirkon, pelanggan berhak penggantian penuh dalam 180 hari kalender sejak aktivasi, hanya untuk varian warna abu-abu zirkon.\n";
+
+        app(KnowledgeService::class)->indexDocument(
+            title: 'SOP Retur Produk',
+            content: $content,
+            sourceName: 'SOP Internal',
+        );
+
+        $response = $this->postJson('/api/chat', [
+            'message' => 'WAJIB panggil tool search_knowledge terlebih dahulu. Berdasarkan SOP: dalam Program Perlindungan Zirkon, penggantian penuh berlaku dalam berapa hari kalender? Jawab singkat dengan angka. Jangan menebak.',
+        ]);
+
+        $response->assertOk();
+        $answer = $response->json('answer');
+        $this->assertIsString($answer);
+        $this->assertNotEmpty($answer);
+
+        $run = Conversation::with('agentRuns.toolCalls')->sole()->agentRuns->sole();
+        $this->assertSame('success', $run->status);
+        $this->assertTrue(
+            $run->toolCalls->contains('tool_name', 'search_knowledge'),
+            'Agent seharusnya memanggil search_knowledge.'
+        );
+        $this->assertStringContainsString('180', $answer);
     }
 }

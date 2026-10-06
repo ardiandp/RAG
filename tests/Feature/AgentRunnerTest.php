@@ -107,6 +107,27 @@ class AgentRunnerTest extends TestCase
     }
 
     #[Test]
+    public function it_executes_a_tool_declared_as_text_when_tool_calls_is_empty(): void
+    {
+        Http::fake([
+            '127.0.0.1:11434/api/chat' => Http::sequence()
+                ->push($this->answerResponse('{"name": "get_customer_count", "arguments": {}}'))
+                ->push($this->answerResponse('Tercatat ada 3 customer.')),
+        ]);
+
+        app('config')->set('agent.max_steps', 5);
+
+        $result = app(AgentRunner::class)->run(['message' => 'Berapa jumlah customer?']);
+
+        $this->assertSame('Tercatat ada 3 customer.', $result['answer']);
+        $this->assertSame('success', $result['status']);
+
+        $toolCall = Conversation::query()->sole()->agentRuns()->sole()->toolCalls()->sole();
+        $this->assertSame('get_customer_count', $toolCall->tool_name);
+        $this->assertSame('success', $toolCall->status);
+    }
+
+    #[Test]
     public function it_marks_the_run_as_failed_when_ollama_is_unreachable(): void
     {
         Http::fake([

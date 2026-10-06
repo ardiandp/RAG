@@ -12,7 +12,7 @@ use RuntimeException;
 
 class AgentRunner
 {
-    private const DEFAULT_SYSTEM_PROMPT = 'Kamu adalah asisten AI IRNIS. Untuk pertanyaan umum jawab langsung. Jika pertanyaan membutuhkan data, panggil tool yang tersedia, lalu jawab berdasarkan hasil tool.';
+    private const DEFAULT_SYSTEM_PROMPT = 'Kamu adalah asisten AI IRNIS. Untuk pertanyaan umum jawab langsung. Jika pertanyaan membutuhkan data atau informasi dari dokumen, panggil tool yang tersedia lalu jawab berdasarkan hasil tool. Saat memanggil tool, gunakan format tool_calls yang disediakan sistem, JANGAN menulis pemanggilan tool sebagai teks jawaban biasa.';
 
     public function __construct(
         private readonly OllamaService $ollama,
@@ -77,6 +77,10 @@ class AgentRunner
 
             $content = (string) data_get($response, 'message.content', '');
             $toolCalls = data_get($response, 'message.tool_calls', []);
+
+            if (empty($toolCalls)) {
+                [$toolCalls, $content] = $this->extractTextualToolCalls($content);
+            }
 
             if (empty($toolCalls)) {
                 $finalContent = $content;
@@ -218,7 +222,7 @@ class AgentRunner
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<int, array<string, mixed>>
      */
     private function decodeArguments(mixed $arguments): array
     {
@@ -229,5 +233,49 @@ class AgentRunner
         $decoded = json_decode((string) $arguments, true);
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Model kecil kadang menulis pemanggilan tool sebagai teks JSON di
+     * kolom content alih-alih field tool_calls. Deteksi pola tersebut
+     * dan jadikan tool call yang dapat dieksekusi.
+     *
+     * @return array{
+     *     0: array<int, array<string, mixed>>,
+     *     1: string
+     * }
+     */
+    private function extractTextualToolCalls(string $content): array
+    {
+        $calls = [];
+        $candidates = [];
+
+        if (preg_match_all('/```(?:json)?\s*(\{.*?\})\s*```/s', $content, $matches)) {
+            $candidates = $matches[1];
+        }
+
+        if (json_decode($content, true) !== null) {
+            $candidates[] = trim($content);
+        }
+
+        foreach ($candidates as $json) {
+            $decoded = json_decode($json, true);
+
+            if (! is_array($decoded) || empty($decoded['name']) || ! array_key_exists('arguments', $decoded)) {
+                continue;
+            }
+
+            $calls[] = [
+                'function' => [
+                    'name' => (string) $decoded['name'],
+                    'arguments' => $decoded['arguments'],
+                ],
+            ];
+
+            $content = trim(str_replace($json, '', $content));
+            $content = trim((string) preg_replace('/\s+/u', ' ', $content));
+        }
+
+        return [$calls, $content];
     }
 }
