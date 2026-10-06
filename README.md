@@ -1,58 +1,171 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# IRNIS AI CORE
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Asisten AI percakapan (agent) berbasis **Laravel + PostgreSQL (pgvector) + Ollama (Qwen)** dengan RAG dan tool-calling. Termasuk dashboard web (Blade), REST API, audit trail, dan basis pengetahuan yang diindeks ke vektor.
 
-## About Laravel
+## Fitur
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **Agent loop** dengan tool-calling (`qwen2.5`) + fallback ekstraksi tool-call dari teks.
+- **RAG** (retrieval-augmented generation): dokumen dipecah → chunk → embedding (`nomic-embed-text`) → pencarian kosinus di **pgvector**.
+- **Upload dokumen**: PDF, DOCX, TXT/MD (via API maupun dashboard).
+- **Tool**: ringkasan penjualan, produk, pelanggan, pencarian basis pengetahuan — berbasis permission/role.
+- **Observability**: audit log (`agent_run.started/finished`, `tool_call.denied`, `knowledge.document_uploaded/indexed`), transcript lengkap per run.
+- **Dashboard web**: Chat, Conversations, Agent Runs, Tools, Knowledge — data per-user, admin dapat melihat semua & upload.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Software yang Diperlukan
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+| Software | Versi | Catatan |
+|---|---|---|
+| PHP | ^8.3 | Wajib ekstensi `dom`, `mbstring`, `xml`, `zip` (default Laragon) |
+| Composer | 2.x | — |
+| PostgreSQL | 16+ (dipakai 18) | Wajib ekstensi **pgvector** |
+| Ollama | ≥ 0.3 | Chat model + embedding model (lihat di bawah) |
+| Web server | `php artisan serve` atau Laragon/Vite dev | — |
+| (Windows) Laragon | 6.x | Cara mudah menyediakan PHP + PostgreSQL |
 
-## Learning Laravel
+### Model Ollama
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```sh
+ollama pull qwen2.5:1.5b
+ollama pull nomic-embed-text
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+- `qwen2.5:1.5b` → model chat/tool-calling.
+- `nomic-embed-text` → model embedding (768 dimensi).
 
-## Contributing
+Pastikan server Ollama berjalan dan dapat diakses: `http://127.0.0.1:11434`.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### pgvector (PostgreSQL)
 
-## Code of Conduct
+Aktifkan ekstensi di setiap database (dev & test):
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
 
-## Security Vulnerabilities
+- **macOS**: `brew install pgvector`
+- **Debian/Ubuntu**: `apt install postgresql-16-pgvector` (jika versi PostgreSQL 14-17), lalu `CREATE EXTENSION vector` di database.
+- **Windows (manual)**:
+  1. Unduh rilis pgvector untuk versi PostgreSQL Anda, salin `vector.dll` ke `C:\Program Files\PostgreSQL\<versi>\lib` dan `vector.control` + `vector--*.sql` ke `...\share\extension`.
+  2. Jalankan `CREATE EXTENSION IF NOT EXISTS vector;` di setiap database.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Verifikasi: `SELECT extversion FROM pg_extension WHERE extname='vector';` → contoh `0.8.6`.
 
-## License
+## Instalasi
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```sh
+# 1. Clone & install dependensi
+git clone <repo-url> irnis-ai
+cd irnis-ai
+composer install
+
+# 2. Konfigurasi
+cp .env.example .env
+php artisan key:generate
+```
+
+Isi `.env`:
+
+```env
+APP_URL=http://localhost:8000
+
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=irnis_ai
+DB_USERNAME=postgres
+DB_PASSWORD=<password postgres Anda>
+
+OLLAMA_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5:1.5b
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+OLLAMA_EMBEDDING_DIMENSIONS=768
+# OLLAMA_TIMEOUT=120, OLLAMA_TEMPERATURE=0.2, OLLAMA_TOP_K=3
+```
+
+Untuk menjalankan tes juga perlu database terpisah:
+
+```sh
+psql -U postgres -c "CREATE DATABASE irnis_ai;"
+psql -U postgres -c "CREATE DATABASE irnis_ai_test;"
+```
+
+Lalu migrasi + seed:
+
+```sh
+php artisan migrate --seed
+```
+
+Migrasi membuat skema (users, agents, conversations, messages, agent_runs, tool_calls, sales_orders, knowledge_sources, documents, document_chunks dengan kolom `embedding vector(768)`, audit_logs, personal_access_tokens). Seed membuat akun demo + data sampel (3 percakapan, agent runs, tool calls, dan 2 dokumen SOP terindeks via Ollama — bagian knowledge otomatis dilewati bila Ollama mati).
+
+Jalankan server:
+
+```sh
+php artisan serve
+# buka http://localhost:8000
+```
+
+## Akun Demo (Seeder)
+
+| Role | Email | Password |
+|---|---|---|
+| Admin (full akses + upload) | `admin@irnis.test` | `password` |
+| User (dashboard, chat; data milik sendiri) | `test@example.com` | `password` |
+
+Login: `http://localhost:8000/login` → dashboard. Menu **Chat** di topbar untuk mencoba agent:
+- "Berapa total penjualan bulan September?"
+- "Berapa hari batas retur?"
+
+## API (auth: `sanctum`)
+
+Buat token:
+
+```sh
+php artisan tinker
+$user = App\Models\User::where('email','admin@irnis.test')->first();
+$user->createToken('dev')->plainTextToken;
+```
+
+```sh
+# Chat
+curl -X POST http://localhost:8000/api/chat \
+  -H "Authorization: Bearer <TOKEN>" -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Berapa hari batas retur?"}'
+
+# Transcript percakapan
+curl http://localhost:8000/api/conversations -H "Authorization: Bearer <TOKEN>"
+curl http://localhost:8000/api/conversations/1   -H "Authorization: Bearer <TOKEN>"
+
+# Upload dokumen ke basis pengetahuan
+curl -X POST http://localhost:8000/api/knowledge/documents \
+  -H "Authorization: Bearer <TOKEN>" \
+  -F "file=@sop-cuti.docx" -F "title=SOP Cuti" -F "source=Upload Manual"
+```
+
+## Perintah CLI
+
+```sh
+php artisan knowledge:index path/ke/sop.pdf --source="SOP Internal"
+php artisan db:seed                      # idempoten; aman dijalankan ulang
+php artisan test --compact               # suite deterministik (tanpa live)
+```
+
+## Testing
+
+Suite berjalan di database PostgreSQL `irnis_ai_test` (konfigurasi di `phpunit.xml`). HTTP ke Ollama dimock kecuali test live:
+
+```sh
+php artisan test --compact
+
+# Live end-to-end (butuh Ollama berjalan; chat + RAG asli)
+$env:OLLAMA_LIVE_TEST="true"; php artisan test tests/Feature/LiveChatE2ETest.php   # PowerShell
+OLLAMA_LIVE_TEST=true php artisan test tests/Feature/LiveChatE2ETest.php            # bash
+```
+
+Struktur utama: `app/Agents/AgentRunner.php` (loop agent), `app/Services/` (Ollama, Embedding, Knowledge, DocumentExtractor, TextChunker, Audit), `app/Tools/` (tool + registry), `app/Http/Controllers/` (API & dashboard), `resources/views/dashboard/**` (Blade), `database/seeders/` (demo).
+
+Detail rencana produk: `PRD_IRNIS_AI_CORE_Roadmap.md`.
+
+## Lisensi
+
+Proyek internal/riset. Kode dasar Laravel berlisensi MIT.
