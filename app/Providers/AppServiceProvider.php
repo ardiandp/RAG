@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Services\DocumentExtractor;
 use App\Services\EmbeddingService;
 use App\Services\KnowledgeService;
 use App\Services\OllamaService;
@@ -39,7 +40,10 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(KnowledgeService::class, function (): KnowledgeService {
-            return new KnowledgeService($this->app->make(EmbeddingService::class));
+            return new KnowledgeService(
+                $this->app->make(EmbeddingService::class),
+                $this->app->make(DocumentExtractor::class),
+            );
         });
 
         $this->app->singleton(ToolRegistry::class, function (): ToolRegistry {

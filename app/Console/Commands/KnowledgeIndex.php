@@ -7,9 +7,10 @@ use App\Services\KnowledgeService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use RuntimeException;
 
-#[Signature('knowledge:index {file : Jalur berkas teks (.txt/.md) untuk diindeks} {--source=manual : Nama sumber pengetahuan} {--title= : Judul dokumen (default: nama berkas)} {--chunk-size=800 : Ukuran chunk dalam karakter}')]
-#[Description('Indeks berkas teks ke basis pengetahuan (RAG)')]
+#[Signature('knowledge:index {file : Jalur berkas (.txt/.md/.pdf/.docx) untuk diindeks} {--source=manual : Nama sumber pengetahuan} {--title= : Judul dokumen (default: nama berkas)} {--chunk-size=800 : Ukuran chunk dalam karakter}')]
+#[Description('Indeks berkas teks/PDF/DOCX ke basis pengetahuan (RAG)')]
 class KnowledgeIndex extends Command
 {
     /**
@@ -25,25 +26,22 @@ class KnowledgeIndex extends Command
             return self::FAILURE;
         }
 
-        $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-
-        if (! in_array($extension, ['txt', 'md', 'markdown'], true)) {
-            $this->error("Ekstensi '{$extension}' belum didukung. Gunakan .txt atau .md.");
-
-            return self::FAILURE;
-        }
-
-        $content = (string) file_get_contents($file);
         $title = $this->option('title') ?? pathinfo($file, PATHINFO_FILENAME);
 
         $this->info("Mengindeks '{$title}' ...");
 
-        $document = $knowledge->indexDocument(
-            title: $title,
-            content: $content,
-            chunkSize: (int) $this->option('chunk-size'),
-            sourceName: $this->option('source'),
-        );
+        try {
+            $document = $knowledge->indexFile(
+                path: $file,
+                chunkSize: (int) $this->option('chunk-size'),
+                sourceName: (string) $this->option('source'),
+                title: $title,
+            );
+        } catch (RuntimeException $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         $this->info("Selesai: {$document->chunks()->count()} chunk dari dokumen #{$document->id} disimpan.");
 

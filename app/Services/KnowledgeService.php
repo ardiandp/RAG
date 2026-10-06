@@ -9,7 +9,31 @@ use Illuminate\Support\Collection;
 
 class KnowledgeService
 {
-    public function __construct(private readonly EmbeddingService $embeddings) {}
+    public function __construct(
+        private readonly EmbeddingService $embeddings,
+        private readonly DocumentExtractor $extractor,
+    ) {}
+
+    /**
+     * Ekstrak teks dari berkas (PDF/DOCX/TXT/MD) lalu indeks sebagai
+     * dokumen pengetahuan.
+     */
+    public function indexFile(
+        string $path,
+        int $chunkSize = 800,
+        string $sourceName = 'upload',
+        ?string $title = null,
+        ?string $extension = null,
+    ): Document {
+        $title ??= pathinfo($path, PATHINFO_FILENAME);
+
+        return $this->indexDocument(
+            title: $title,
+            content: $this->extractor->extract($path, $extension),
+            chunkSize: $chunkSize,
+            sourceName: $sourceName,
+        );
+    }
 
     /**
      * Index sebuah dokumen: simpan sumber & dokumen, pecah teks menjadi
