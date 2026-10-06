@@ -32,11 +32,12 @@ class OllamaService
     /**
      * Send a full conversation and return the raw decoded response.
      *
-     * @param  array<int, array{role: string, content: string}>  $messages
+     * @param  array<int, array<string, mixed>>  $messages
      * @param  array<string, mixed>  $options
+     * @param  array<int, array<string, mixed>>  $tools
      * @return array<string, mixed>
      */
-    public function chat(array $messages, ?string $model = null, array $options = []): array
+    public function chat(array $messages, ?string $model = null, array $options = [], array $tools = []): array
     {
         $payload = [
             'model' => $model ?? $this->model,
@@ -44,6 +45,10 @@ class OllamaService
             'stream' => false,
             'options' => array_merge(['temperature' => $this->temperature], $options),
         ];
+
+        if ($tools !== []) {
+            $payload['tools'] = $tools;
+        }
 
         try {
             $started = hrtime(true);

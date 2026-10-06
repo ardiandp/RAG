@@ -1,0 +1,233 @@
+<?php
+
+namespace App\Agents;
+
+use App\Models\Agent;
+use App\Models\AgentRun;
+use App\Models\Conversation;
+use App\Services\OllamaService;
+use App\Tools\ToolRegistry;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
+
+class AgentRunner
+{
+    private const DEFAULT_SYSTEM_PROMPT = 'Kamu adalah asisten AI IRNIS. Untuk pertanyaan umum jawab langsung. Jika pertanyaan membutuhkan data, panggil tool yang tersedia, lalu jawab berdasarkan hasil tool.';
+
+    public function __construct(
+        private readonly OllamaService $ollama,
+        private readonly ToolRegistry $registry,
+    ) {}
+
+    /**
+     * @param  array{message: string, conversation_id?: int, agent_id?: int}  $input
+     * @return array{answer: string, run_id: int, conversation_id: int, status: string, steps: int}
+     */
+    public function run(array $input): array
+    {
+        $message = $input['message'];
+
+        $conversation = isset($input['conversation_id'])
+            ? Conversation::findOrFail($input['conversation_id'])
+            : Conversation::create(['title' => str($message)->limit(60)]);
+
+        $agent = isset($input['agent_id'])
+            ? Agent::find($input['agent_id'])
+            : $conversation->agent;
+
+        $maxSteps = $agent?->max_steps ?? (int) config('agent.max_steps', 5);
+
+        $run = AgentRun::create([
+            'conversation_id' => $conversation->id,
+            'agent_id' => $agent?->id,
+            'user_id' => $conversation->user_id,
+            'status' => 'running',
+            'input' => $message,
+            'steps' => 0,
+            'max_steps' => $maxSteps,
+            'started_at' => now(),
+        ]);
+
+        $conversation->messages()->create([
+            'role' => 'user',
+            'content' => $message,
+        ]);
+
+        $history = $this->buildHistory($conversation, $agent);
+        $tools = $this->registry->schemas();
+
+        $steps = 0;
+        $finalContent = '';
+
+        while ($steps < $maxSteps) {
+            $steps++;
+            $run->update(['steps' => $steps]);
+
+            try {
+                $response = $this->ollama->chat($history, tools: $tools);
+            } catch (RuntimeException $exception) {
+                $run->update([
+                    'status' => 'failed',
+                    'error' => $exception->getMessage(),
+                    'finished_at' => now(),
+                ]);
+
+                throw $exception;
+            }
+
+            $content = (string) data_get($response, 'message.content', '');
+            $toolCalls = data_get($response, 'message.tool_calls', []);
+
+            if (empty($toolCalls)) {
+                $finalContent = $content;
+                break;
+            }
+
+            $history[] = $this->toAssistantMessage($content, $toolCalls);
+
+            foreach ($toolCalls as $call) {
+                $name = (string) data_get($call, 'function.name', '');
+                $arguments = $this->decodeArguments(data_get($call, 'function.arguments', '{}'));
+
+                [$result, $status, $error, $durationMs] = $this->executeTool($name, $arguments, $steps);
+
+                $run->toolCalls()->create([
+                    'tool_name' => $name,
+                    'arguments' => $arguments,
+                    'result' => $result,
+                    'status' => $status,
+                    'error' => $error,
+                    'duration_ms' => $durationMs,
+                    'step' => $steps,
+                ]);
+
+                $history[] = [
+                    'role' => 'tool',
+                    'content' => json_encode($result),
+                    'name' => $name,
+                ];
+            }
+        }
+
+        $status = $finalContent !== '' ? 'success' : 'stopped';
+
+        if ($finalContent === '') {
+            $finalContent = 'Saya tidak dapat menyelesaikan jawaban dalam batas langkah yang tersedia ('.$maxSteps.').';
+        }
+
+        $conversation->messages()->create([
+            'role' => 'assistant',
+            'content' => $finalContent,
+        ]);
+
+        $run->update([
+            'status' => $status,
+            'output' => $finalContent,
+            'finished_at' => now(),
+        ]);
+
+        return [
+            'answer' => $finalContent,
+            'run_id' => $run->id,
+            'conversation_id' => $conversation->id,
+            'status' => $status,
+            'steps' => $steps,
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildHistory(Conversation $conversation, ?Agent $agent): array
+    {
+        $history = [
+            [
+                'role' => 'system',
+                'content' => $agent?->system_prompt ?? self::DEFAULT_SYSTEM_PROMPT,
+            ],
+        ];
+
+        $conversation->messages()
+            ->orderBy('id')
+            ->get()
+            ->each(function ($message) use (&$history): void {
+                if (! in_array($message->role, ['system', 'user', 'assistant'], true)) {
+                    return;
+                }
+
+                $history[] = [
+                    'role' => $message->role,
+                    'content' => (string) $message->content,
+                ];
+            });
+
+        return $history;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $toolCalls
+     * @return array{role: string, content: string|null, tool_calls: array<int, array<string, mixed>>}
+     */
+    private function toAssistantMessage(string $content, array $toolCalls): array
+    {
+        $calls = [];
+
+        foreach ($toolCalls as $call) {
+            $name = (string) data_get($call, 'function.name', '');
+            $arguments = (object) $this->decodeArguments(data_get($call, 'function.arguments', '{}'));
+
+            $calls[] = [
+                'function' => [
+                    'name' => $name,
+                    'arguments' => $arguments,
+                ],
+            ];
+        }
+
+        return [
+            'role' => 'assistant',
+            'content' => $content === '' ? null : $content,
+            'tool_calls' => $calls,
+        ];
+    }
+
+    /**
+     * @return array{0: array<string, mixed>, 1: string, 2: string|null, 3: int}
+     */
+    private function executeTool(string $name, array $arguments, int $step): array
+    {
+        $started = hrtime(true);
+
+        try {
+            $tool = $this->registry->findOrFail($name);
+            $result = $tool->execute($arguments);
+            $durationMs = (int) round((hrtime(true) - $started) / 1_000_000);
+
+            return [$result, 'success', null, $durationMs];
+        } catch (ValidationException $exception) {
+            $durationMs = (int) round((hrtime(true) - $started) / 1_000_000);
+            $error = implode('; ', array_map(fn ($messages): string => implode(', ', $messages), $exception->errors()));
+            $result = ['error' => $error];
+
+            return [$result, 'error', $error, $durationMs];
+        } catch (RuntimeException $exception) {
+            $durationMs = (int) round((hrtime(true) - $started) / 1_000_000);
+
+            return [['error' => $exception->getMessage()], 'error', $exception->getMessage(), $durationMs];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodeArguments(mixed $arguments): array
+    {
+        if (is_array($arguments)) {
+            return $arguments;
+        }
+
+        $decoded = json_decode((string) $arguments, true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+}

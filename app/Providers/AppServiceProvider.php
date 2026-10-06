@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use App\Services\OllamaService;
+use App\Tools\CustomerTool;
+use App\Tools\ProductTool;
+use App\Tools\SalesTool;
+use App\Tools\ToolRegistry;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +23,14 @@ class AppServiceProvider extends ServiceProvider
                 timeout: (int) config('ollama.timeout'),
                 temperature: (float) config('ollama.temperature'),
             );
+        });
+
+        $this->app->singleton(ToolRegistry::class, function (): ToolRegistry {
+            return new ToolRegistry([
+                $this->app->make(SalesTool::class),
+                $this->app->make(ProductTool::class),
+                $this->app->make(CustomerTool::class),
+            ]);
         });
     }
 
