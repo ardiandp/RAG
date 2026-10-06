@@ -13,12 +13,14 @@ Route::middleware('guest')->group(function () {
 
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth');
 
-Route::middleware(['auth', 'can:manage_dashboard'])->prefix('dashboard')->group(function () {
+Route::middleware('auth')->prefix('dashboard')->group(function () {
     Route::get('/', [DashboardController::class, 'index']);
     Route::get('/conversations', [DashboardController::class, 'conversations']);
     Route::get('/conversations/{conversation}', [DashboardController::class, 'conversation']);
     Route::get('/runs', [DashboardController::class, 'runs']);
     Route::get('/tools', [DashboardController::class, 'tools']);
     Route::get('/knowledge', [DashboardController::class, 'knowledge']);
-    Route::post('/knowledge', [DashboardController::class, 'storeKnowledge']);
+
+    Route::post('/knowledge', [DashboardController::class, 'storeKnowledge'])
+        ->middleware('can:manage_dashboard');
 });

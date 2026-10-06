@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\AuditService;
 use App\Services\KnowledgeService;
 use App\Tools\ToolRegistry;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -22,36 +23,45 @@ use RuntimeException;
 
 class DashboardController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
+        $user = $request->user();
+        $admin = $user->isAdmin();
+
         return view('dashboard.index', [
-            'users' => User::count(),
-            'conversations' => Conversation::count(),
-            'messages' => Message::count(),
-            'runs' => AgentRun::count(),
-            'runsSuccess' => AgentRun::where('status', 'success')->count(),
-            'runsFailed' => AgentRun::where('status', 'failed')->count(),
-            'toolCalls' => ToolCall::count(),
-            'toolCallsDenied' => ToolCall::where('status', 'denied')->count(),
+            'users' => $admin ? User::count() : 1,
+            'conversations' => $this->scoped($request)->count(),
+            'messages' => Message::whereIn('conversation_id', $this->scoped($request)->pluck('id'))->count(),
+            'runs' => $this->scopedRun($request)->count(),
+            'runsSuccess' => $this->scopedRun($request)->where('status', 'success')->count(),
+            'runsFailed' => $this->scopedRun($request)->where('status', 'failed')->count(),
+            'toolCalls' => $this->scopedToolCall($request)->count(),
+            'toolCallsDenied' => $this->scopedToolCall($request)->where('status', 'denied')->count(),
             'documents' => Document::count(),
             'chunks' => Document::count() > 0 ? DocumentChunk::count() : 0,
-            'audits' => AuditLog::count(),
-            'latestRuns' => AgentRun::with(['conversation', 'user', 'agent'])
+            'audits' => $admin ? AuditLog::count() : AuditLog::where('user_id', $user->id)->count(),
+            'latestRuns' => $this->scopedRun($request)
+                ->with(['conversation', 'user', 'agent'])
                 ->latest('id')->limit(8)->get(),
         ]);
     }
 
-    public function conversations(): View
+    public function conversations(Request $request): View
     {
         return view('dashboard.conversations', [
-            'conversations' => Conversation::with(['user', 'agent'])
+            'conversations' => $this->scoped($request)
+                ->with(['user', 'agent'])
                 ->withCount(['messages', 'agentRuns'])
                 ->latest('updated_at')->paginate(15),
         ]);
     }
 
-    public function conversation(Conversation $conversation): View
+    public function conversation(Request $request, Conversation $conversation): View
     {
+        if (! $request->user()->isAdmin() && $conversation->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
         $conversation->load([
             'user',
             'agent',
@@ -64,19 +74,20 @@ class DashboardController extends Controller
         ]);
     }
 
-    public function runs(): View
+    public function runs(Request $request): View
     {
         return view('dashboard.runs', [
-            'runs' => AgentRun::with(['conversation', 'user', 'agent', 'toolCalls'])
+            'runs' => $this->scopedRun($request)
+                ->with(['conversation', 'user', 'agent', 'toolCalls'])
                 ->latest('id')->paginate(15),
         ]);
     }
 
-    public function tools(ToolRegistry $registry): View
+    public function tools(Request $request, ToolRegistry $registry): View
     {
         return view('dashboard.tools', [
             'tools' => $registry->all(),
-            'usage' => ToolCall::query()
+            'usage' => $this->scopedToolCall($request)
                 ->selectRaw('tool_name, status, count(*) as total')
                 ->groupBy('tool_name', 'status')
                 ->get()
@@ -84,9 +95,10 @@ class DashboardController extends Controller
         ]);
     }
 
-    public function knowledge(): View
+    public function knowledge(Request $request): View
     {
         return view('dashboard.knowledge', [
+            'canUpload' => $request->user()->can('manage_dashboard'),
             'documents' => Document::with('source')->withCount('chunks')
                 ->latest('id')->paginate(15),
             'sources' => KnowledgeSource::withCount('documents')->get(),
@@ -122,5 +134,32 @@ class DashboardController extends Controller
         ], request: $request);
 
         return back()->with('status', "Dokumen \"{$document->title}\" berhasil diindeks.");
+    }
+
+    /**
+     * Basis data conversation terbatas pada user yang sedang login,
+     * kecuali admin yang melihat semuanya.
+     */
+    private function scoped(Request $request): Builder
+    {
+        return $request->user()->isAdmin()
+            ? Conversation::query()
+            : Conversation::query()->where('user_id', $request->user()->id);
+    }
+
+    private function scopedRun(Request $request): Builder
+    {
+        return $request->user()->isAdmin()
+            ? AgentRun::query()
+            : AgentRun::query()->where('user_id', $request->user()->id);
+    }
+
+    private function scopedToolCall(Request $request): Builder
+    {
+        return ToolCall::query()
+            ->when(
+                ! $request->user()->isAdmin(),
+                fn (Builder $query) => $query->whereHas('agentRun', fn (Builder $run) => $run->where('user_id', $request->user()->id)),
+            );
     }
 }

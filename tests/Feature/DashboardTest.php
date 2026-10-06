@@ -36,11 +36,35 @@ class DashboardTest extends TestCase
     }
 
     #[Test]
-    public function regular_users_cannot_access_the_dashboard(): void
+    public function regular_users_can_view_the_dashboard_but_cannot_upload(): void
     {
         $user = User::factory()->create(['role' => 'user']);
 
-        $this->actingAs($user)->get('/dashboard')->assertForbidden();
+        $this->actingAs($user)->get('/dashboard')->assertOk()->assertSee($user->email);
+
+        $this->actingAs($user)->post('/dashboard/knowledge', [
+            'file' => UploadedFile::fake()->createWithContent('x.txt', 'konten'),
+        ])->assertForbidden();
+    }
+
+    #[Test]
+    public function regular_users_only_see_their_own_activity(): void
+    {
+        $admin = $this->admin();
+        $user = User::factory()->create(['role' => 'user']);
+        $other = User::factory()->create(['role' => 'user']);
+
+        $mine = Conversation::factory()->create(['user_id' => $user->id, 'title' => 'Milik saya']);
+        $theirs = Conversation::factory()->create(['user_id' => $other->id, 'title' => 'Punya orang lain']);
+
+        $this->actingAs($user)->get('/dashboard/conversations')
+            ->assertOk()->assertSee('Milik saya')->assertDontSee('Punya orang lain');
+
+        $this->actingAs($user)->get('/dashboard/conversations/'.$mine->id)->assertOk();
+        $this->actingAs($user)->get('/dashboard/conversations/'.$theirs->id)->assertForbidden();
+
+        $this->actingAs($admin)->get('/dashboard/conversations')
+            ->assertOk()->assertSee('Milik saya')->assertSee('Punya orang lain');
     }
 
     #[Test]

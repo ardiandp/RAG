@@ -6,19 +6,21 @@
     <h1>Knowledge Base</h1>
 
     <div class="split">
-        <div class="card">
-            <h3>Upload Dokumen</h3>
-            <form method="POST" action="/dashboard/knowledge" enctype="multipart/form-data">
-                @csrf
-                <label>Berkas (PDF, DOCX, TXT)</label>
-                <input type="file" name="file" accept=".txt,.md,.pdf,.docx" required>
-                <label>Judul (opsional)</label>
-                <input type="text" name="title" placeholder="auto dari nama berkas">
-                <label>Sumber (opsional)</label>
-                <input type="text" name="source" placeholder="contoh: Upload Manual" value="upload">
-                <button type="submit" class="btn">Indeks</button>
-            </form>
-        </div>
+        @if ($canUpload)
+            <div class="card">
+                <h3>Upload Dokumen</h3>
+                <form method="POST" action="/dashboard/knowledge" enctype="multipart/form-data">
+                    @csrf
+                    <label>Berkas (PDF, DOCX, TXT)</label>
+                    <input type="file" name="file" accept=".txt,.md,.pdf,.docx" required>
+                    <label>Judul (opsional)</label>
+                    <input type="text" name="title" placeholder="auto dari nama berkas">
+                    <label>Sumber (opsional)</label>
+                    <input type="text" name="source" placeholder="contoh: Upload Manual" value="upload">
+                    <button type="submit" class="btn">Indeks</button>
+                </form>
+            </div>
+        @endif
 
         <div class="card">
             <h3>Sumber</h3>
