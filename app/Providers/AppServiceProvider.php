@@ -64,5 +64,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('sales.view', fn (User $user) => $user->role === 'admin');
         Gate::define('customer.view', fn (User $user) => $user->role === 'admin');
         Gate::define('knowledge.view', fn (User $user) => $user->role === 'admin');
+        Gate::define('manage_dashboard', fn (User $user) => $user->role === 'admin');
     }
 }
