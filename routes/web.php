@@ -15,6 +15,9 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth');
 
 Route::middleware('auth')->prefix('dashboard')->group(function () {
     Route::get('/', [DashboardController::class, 'index']);
+    Route::get('/chat', [DashboardController::class, 'chat']);
+    Route::get('/chat/{conversation}', [DashboardController::class, 'chatThread']);
+    Route::post('/chat', [DashboardController::class, 'chatStore']);
     Route::get('/conversations', [DashboardController::class, 'conversations']);
     Route::get('/conversations/{conversation}', [DashboardController::class, 'conversation']);
     Route::get('/runs', [DashboardController::class, 'runs']);

@@ -15,19 +15,17 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::factory()->create([
-            'name' => 'Admin IRNIS',
-            'email' => 'admin@irnis.test',
-            'password' => 'password',
-            'role' => 'admin',
-        ]);
+        User::updateOrCreate(
+            ['email' => 'admin@irnis.test'],
+            ['name' => 'Admin IRNIS', 'password' => 'password', 'role' => 'admin'],
+        );
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            'role' => 'user',
-        ]);
+        User::updateOrCreate(
+            ['email' => 'test@example.com'],
+            ['name' => 'Test User', 'password' => 'password', 'role' => 'user'],
+        );
 
         $this->call(SalesOrderSeeder::class);
+        $this->call(SampleDataSeeder::class);
     }
 }

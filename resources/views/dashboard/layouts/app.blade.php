@@ -10,6 +10,7 @@
     <header class="topbar">
         <a class="brand" href="/dashboard">IRNIS <span>AI</span></a>
         <nav>
+            <a href="/dashboard/chat">Chat</a>
             <a href="/dashboard/conversations">Conversations</a>
             <a href="/dashboard/runs">Agent Runs</a>
             <a href="/dashboard/tools">Tools</a>

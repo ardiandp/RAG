@@ -24,15 +24,17 @@ class SalesOrderSeeder extends Seeder
         ];
 
         foreach ($orders as [$number, $customer, $product, $quantity, $price, $date]) {
-            SalesOrder::create([
-                'order_number' => $number,
-                'customer_name' => $customer,
-                'product_name' => $product,
-                'quantity' => $quantity,
-                'unit_price' => $price,
-                'amount' => $quantity * $price,
-                'order_date' => $date,
-            ]);
+            SalesOrder::firstOrCreate(
+                ['order_number' => $number],
+                [
+                    'customer_name' => $customer,
+                    'product_name' => $product,
+                    'quantity' => $quantity,
+                    'unit_price' => $price,
+                    'amount' => $quantity * $price,
+                    'order_date' => $date,
+                ],
+            );
         }
     }
 }

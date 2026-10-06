@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Agents\AgentRunner;
 use App\Models\AgentRun;
 use App\Models\AuditLog;
 use App\Models\Conversation;
@@ -14,15 +15,78 @@ use App\Models\User;
 use App\Services\AuditService;
 use App\Services\KnowledgeService;
 use App\Tools\ToolRegistry;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
 use Illuminate\View\View;
 use RuntimeException;
 
 class DashboardController extends Controller
 {
+    public function chat(Request $request): View
+    {
+        return $this->chatPage($request, null);
+    }
+
+    public function chatThread(Request $request, Conversation $conversation): View
+    {
+        if (! $request->user()->isAdmin() && $conversation->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        return $this->chatPage($request, $conversation);
+    }
+
+    private function chatPage(Request $request, ?Conversation $conversation): View
+    {
+        $conversation?->load([
+            'messages' => fn ($query) => $query->orderBy('id'),
+            'agentRuns' => fn ($query) => $query->with('toolCalls')->orderBy('id'),
+        ]);
+
+        return view('dashboard.chat', [
+            'conversations' => $this->scoped($request)
+                ->withCount('messages')->latest('updated_at')->get(),
+            'conversation' => $conversation,
+        ]);
+    }
+
+    public function chatStore(Request $request, AgentRunner $runner): JsonResponse
+    {
+        $data = $request->validate([
+            'message' => ['required', 'string', 'max:4000'],
+            'conversation_id' => ['nullable', 'integer', 'exists:conversations,id'],
+        ]);
+
+        $data['user_id'] = $request->user()->id;
+
+        try {
+            $result = $runner->run($data);
+        } catch (AuthorizationException) {
+            return response()->json(['message' => 'Conversation ini milik pengguna lain.'], 403);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 502);
+        }
+
+        $toolCalls = AgentRun::with('toolCalls')->find($result['run_id'])
+            ?->toolCalls->map(fn (ToolCall $call): array => [
+                'tool_name' => $call->tool_name,
+                'status' => $call->status,
+                'arguments' => $call->arguments,
+                'result' => $call->result,
+            ])->values();
+
+        return response()->json([
+            'answer' => $result['answer'],
+            'conversation_id' => $result['conversation_id'],
+            'status' => $result['status'],
+            'steps' => $result['steps'],
+            'tool_calls' => $toolCalls,
+        ]);
+    }
+
     public function index(Request $request): View
     {
         $user = $request->user();
