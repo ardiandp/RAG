@@ -200,6 +200,19 @@ class DashboardController extends Controller
         return back()->with('status', "Dokumen \"{$document->title}\" berhasil diindeks.");
     }
 
+    public function destroyDocument(Document $document, AuditService $audit): RedirectResponse
+    {
+        $title = $document->title;
+        $document->delete();
+
+        $audit->log('knowledge.document_deleted', null, [
+            'document_id' => $document->id,
+            'title' => $title,
+        ]);
+
+        return back()->with('status', "Dokumen \"{$title}\" dihapus (termasuk chunks-nya).");
+    }
+
     /**
      * Basis data conversation terbatas pada user yang sedang login,
      * kecuali admin yang melihat semuanya.

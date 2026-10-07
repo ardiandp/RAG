@@ -17,6 +17,7 @@ class Agent extends Model
         'description',
         'system_prompt',
         'model',
+        'tools',
         'is_active',
         'max_steps',
     ];
@@ -24,6 +25,7 @@ class Agent extends Model
     protected function casts(): array
     {
         return [
+            'tools' => 'array',
             'is_active' => 'boolean',
             'max_steps' => 'integer',
         ];
@@ -39,5 +41,13 @@ class Agent extends Model
     public function agentRuns(): HasMany
     {
         return $this->hasMany(AgentRun::class);
+    }
+
+    /**
+     * Apakah agent diizinkan memakai tool bernama $name.
+     */
+    public function allowsTool(string $name): bool
+    {
+        return empty($this->tools) || in_array($name, $this->tools, true);
     }
 }

@@ -13,8 +13,11 @@
             <a href="/dashboard/chat">Chat</a>
             <a href="/dashboard/conversations">Conversations</a>
             <a href="/dashboard/runs">Agent Runs</a>
+            <a href="/dashboard/agents">Agents</a>
             <a href="/dashboard/tools">Tools</a>
             <a href="/dashboard/knowledge">Knowledge</a>
+            <a href="/dashboard/audit-logs">Audit Logs</a>
+            <a href="/dashboard/settings">Settings</a>
         </nav>
         <div class="topbar-right">
             <span>{{ auth()->user()->email }}</span>

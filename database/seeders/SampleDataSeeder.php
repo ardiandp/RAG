@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Agent;
 use App\Models\AgentRun;
 use App\Models\Conversation;
 use App\Models\Message;
@@ -19,6 +20,8 @@ class SampleDataSeeder extends Seeder
      */
     public function run(KnowledgeService $knowledge): void
     {
+        $this->seedAgents();
+
         if (Conversation::where('title', 'Ringkasan penjualan bulan September')->exists()) {
             $this->command?->info('Data sampel sudah ada, dilewati.');
 
@@ -34,6 +37,39 @@ class SampleDataSeeder extends Seeder
         $this->command?->info('Data sampel percakapan dibuat ('.Conversation::count().' conversation).');
 
         $this->seedKnowledge($knowledge);
+    }
+
+    private function seedAgents(): void
+    {
+        $this->agent(
+            name: 'Asisten Penjualan',
+            description: 'Membantu menjawab ringkasan, tren, dan populasi produk dari data sales.',
+            system_prompt: 'Kamu adalah asisten analisis penjualan IRNIS. Jawab ringkas berdasarkan data yang diambil dari tool. Bila angka tidak jelas, tanyakan konteks bulan.',
+            tools: ['get_sales_summary', 'get_best_selling_product', 'get_customer_count'],
+        );
+
+        $this->agent(
+            name: 'Asisten Knowledge',
+            description: 'Menjawab pertanyaan seputar SOP dan dokumen internal perusahaan.',
+            system_prompt: 'Kamu adalah asisten knowledge base IRNIS. Jawab hanya dari hasil pencarian knowledge; bila tidak ditemukan, katakan tidak tahu dan sarankan langkah selanjutnya.',
+            tools: ['search_knowledge'],
+        );
+
+        $this->command?->info('Data sampel agent disiapkan ('.Agent::count().' agent).');
+    }
+
+    private function agent(string $name, string $description, string $system_prompt, array $tools): void
+    {
+        Agent::firstOrCreate(
+            ['name' => $name],
+            [
+                'description' => $description,
+                'system_prompt' => $system_prompt,
+                'tools' => $tools,
+                'is_active' => true,
+                'max_steps' => 5,
+            ],
+        );
     }
 
     private function user(string $email, string $name): User
@@ -87,6 +123,7 @@ class ConversationsBuilder
     private function salesConversation(): void
     {
         $conversation = $this->conversation($this->test, 'Ringkasan penjualan bulan September');
+        $conversation->update(['agent_id' => Agent::where('name', 'Asisten Penjualan')->value('id')]);
 
         $this->message($conversation, 'user', 'Berapa total penjualan bulan September?');
         $this->message($conversation, 'assistant', 'Total penjualan September adalah Rp 250.000.000 dari 15 pesanan.');

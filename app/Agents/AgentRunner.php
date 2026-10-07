@@ -45,6 +45,10 @@ class AgentRunner
             ? Agent::find($input['agent_id'])
             : $conversation->agent;
 
+        if ($agent !== null && ! $agent->is_active) {
+            throw new RuntimeException("Agent '{$agent->name}' sedang tidak aktif.");
+        }
+
         $maxSteps = $agent?->max_steps ?? (int) config('agent.max_steps', 5);
 
         $run = AgentRun::create([
@@ -69,7 +73,10 @@ class AgentRunner
         ]);
 
         $history = $this->buildHistory($conversation, $agent);
-        $tools = $this->registry->schemas();
+        $tools = collect($this->registry->schemas())
+            ->filter(fn (array $schema): bool => $agent === null || $agent->allowsTool((string) $schema['function']['name']))
+            ->values()
+            ->all();
 
         $steps = 0;
         $finalContent = '';
@@ -79,7 +86,7 @@ class AgentRunner
             $run->update(['steps' => $steps]);
 
             try {
-                $response = $this->ollama->chat($history, tools: $tools);
+                $response = $this->ollama->chat($history, model: $agent?->model, tools: $tools);
             } catch (RuntimeException $exception) {
                 $run->update([
                     'status' => 'failed',

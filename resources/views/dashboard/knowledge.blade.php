@@ -48,6 +48,9 @@
                 <th>Chunks</th>
                 <th>Aktif</th>
                 <th>Preview</th>
+                @if ($canUpload)
+                    <th></th>
+                @endif
             </tr>
         </thead>
         <tbody>
@@ -60,9 +63,19 @@
                     <td>{{ $document->chunks_count }}</td>
                     <td>{{ $document->created_at->diffForHumans() }}</td>
                     <td class="truncate">{{ \Illuminate\Support\Str::limit($document->content, 120) }}</td>
+                    @if ($canUpload)
+                        <td>
+                            <form method="POST" action="{{ route('knowledge.destroy', $document) }}" class="inline"
+                                  onsubmit="return confirm('Hapus dokumen \'{{ $document->title }}\' dan seluruh chunks-nya?')">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="btn btn-danger">Hapus</button>
+                            </form>
+                        </td>
+                    @endif
                 </tr>
             @empty
-                <tr><td colspan="7" class="empty">Belum ada dokumen terindeks.</td></tr>
+                <tr><td colspan="8" class="empty">Belum ada dokumen terindeks.</td></tr>
             @endforelse
         </tbody>
     </table>
