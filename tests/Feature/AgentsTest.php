@@ -112,7 +112,7 @@ class AgentsTest extends TestCase
 
         $this->actingAs($admin)->patch('/dashboard/agents/'.$agent->id.'/toggle')->assertRedirect();
         $agent->refresh();
-        $this->assertFalse((bool) \Illuminate\Support\Facades\DB::table('agents')->where('id', $agent->id)->value('is_active'));
+        $this->assertFalse((bool) $agent->fresh()->is_active);
         $this->assertDatabaseHas('audit_logs', ['action' => 'agent.toggled']);
 
         $this->actingAs($admin)->delete('/dashboard/agents/'.$agent->id)->assertRedirect('/dashboard/agents');

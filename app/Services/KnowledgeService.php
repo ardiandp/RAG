@@ -81,7 +81,13 @@ class KnowledgeService
      */
     public function search(string $query, int $limit = 3): Collection
     {
-        $vector = $this->toVectorLiteral($this->embeddings->embed($query));
+        $embedding = $this->embeddings->embed($query);
+
+        if (empty($embedding)) {
+            return collect();
+        }
+
+        $vector = $this->toVectorLiteral($embedding);
 
         return DocumentChunk::query()
             ->select('document_chunks.*')

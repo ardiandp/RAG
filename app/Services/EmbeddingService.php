@@ -22,7 +22,8 @@ class EmbeddingService
      */
     public function embed(string $text): array
     {
-        return $this->embedMany([$text])[0];
+        $result = $this->embedMany([$text]);
+        return is_array($result) && isset($result[0]) && is_array($result[0]) ? $result[0] : [];
     }
 
     /**

@@ -140,7 +140,7 @@ class DashboardController extends Controller
 
     public function runs(Request $request): View
     {
-        return view('dashboard.runs', [
+        return view('dashboard.runs.index', [
             'runs' => $this->scopedRun($request)
                 ->with(['conversation', 'user', 'agent', 'toolCalls'])
                 ->latest('id')->paginate(15),
@@ -149,7 +149,7 @@ class DashboardController extends Controller
 
     public function tools(Request $request, ToolRegistry $registry): View
     {
-        return view('dashboard.tools', [
+        return view('dashboard.tools.index', [
             'tools' => $registry->all(),
             'usage' => $this->scopedToolCall($request)
                 ->selectRaw('tool_name, status, count(*) as total')
