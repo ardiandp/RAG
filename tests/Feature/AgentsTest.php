@@ -102,6 +102,7 @@ class AgentsTest extends TestCase
         $this->actingAs($admin)->put('/dashboard/agents/'.$agent->id, [
             'name' => 'Baru',
             'max_steps' => 7,
+            'is_active' => '1',
             'tools' => ['search_knowledge'],
         ])->assertRedirect('/dashboard/agents');
 
@@ -112,7 +113,7 @@ class AgentsTest extends TestCase
 
         $this->actingAs($admin)->patch('/dashboard/agents/'.$agent->id.'/toggle')->assertRedirect();
         $agent->refresh();
-        $this->assertFalse((bool) $agent->fresh()->is_active);
+        $this->assertFalse((bool) $agent->is_active);
         $this->assertDatabaseHas('audit_logs', ['action' => 'agent.toggled']);
 
         $this->actingAs($admin)->delete('/dashboard/agents/'.$agent->id)->assertRedirect('/dashboard/agents');
@@ -146,7 +147,14 @@ class AgentsTest extends TestCase
         $calls = 0;
 
         Http::fake(function ($request) use (&$sentTools, &$calls) {
-            $sentTools[] = array_column($request['tools'] ?? [], 'function.name');
+            if (str_ends_with($request->url(), '/api/embed')) {
+                return Http::response(['embeddings' => [array_fill(0, 768, 0.0)]]);
+            }
+
+            $sentTools[] = array_map(
+                fn (array $tool) => $tool['function']['name'],
+                $request->data()['tools'] ?? [],
+            );
             $calls++;
 
             return Http::response($calls === 1

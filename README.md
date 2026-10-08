@@ -20,6 +20,7 @@ Asisten AI percakapan (agent) berbasis **Laravel + PostgreSQL (pgvector) + Ollam
 - [Perintah CLI](#perintah-cli)
 - [Testing](#testing)
 - [Struktur Proyek](#struktur-proyek)
+- [Cara Kerja AI](docs/CARA_KERJA_AI.md)
 
 ---
 

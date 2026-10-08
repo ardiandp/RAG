@@ -57,7 +57,14 @@ class KnowledgeService
         ]);
 
         $chunks = TextChunker::chunk($content, $chunkSize);
-        $vectors = $chunks === [] ? [] : $this->embeddings->embedMany($chunks);
+
+        try {
+            $vectors = $chunks === [] ? [] : $this->embeddings->embedMany($chunks);
+        } catch (\Throwable $exception) {
+            $document->update(['status' => 'failed']);
+
+            throw $exception;
+        }
 
         foreach ($chunks as $index => $chunk) {
             $document->chunks()->create([

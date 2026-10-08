@@ -13,6 +13,7 @@ use App\Models\Message;
 use App\Models\ToolCall;
 use App\Models\User;
 use App\Services\AuditService;
+use App\Services\DocumentExtractor;
 use App\Services\KnowledgeService;
 use App\Tools\ToolRegistry;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -53,14 +54,35 @@ class DashboardController extends Controller
         ]);
     }
 
-    public function chatStore(Request $request, AgentRunner $runner): JsonResponse
+    public function chatStore(Request $request, AgentRunner $runner, DocumentExtractor $extractor): JsonResponse
     {
         $data = $request->validate([
             'message' => ['required', 'string', 'max:4000'],
             'conversation_id' => ['nullable', 'integer', 'exists:conversations,id'],
+            'file' => ['nullable', 'file', 'mimes:txt,md,markdown,pdf,docx', 'max:5120'],
         ]);
 
         $data['user_id'] = $request->user()->id;
+
+        if ($request->hasFile('file')) {
+            try {
+                $text = trim($extractor->extract(
+                    $request->file('file')->getRealPath(),
+                    $request->file('file')->getClientOriginalExtension(),
+                ));
+            } catch (RuntimeException $exception) {
+                return response()->json(['message' => $exception->getMessage()], 422);
+            }
+
+            if ($text === '') {
+                return response()->json(['message' => 'Berkas tidak mengandung teks yang dapat dibaca.'], 422);
+            }
+
+            $data['file_name'] = $request->file('file')->getClientOriginalName();
+            $data['file_excerpt'] = str($text)->limit(6000, '…')->toString();
+        }
+
+        unset($data['file']);
 
         try {
             $result = $runner->run($data);
@@ -145,6 +167,17 @@ class DashboardController extends Controller
                 ->with(['conversation', 'user', 'agent', 'toolCalls'])
                 ->latest('id')->paginate(15),
         ]);
+    }
+
+    public function runShow(Request $request, AgentRun $run): View
+    {
+        if (! $request->user()->isAdmin() && (int) $run->user_id !== (int) $request->user()->id) {
+            abort(403);
+        }
+
+        $run->load(['conversation', 'user', 'agent', 'toolCalls' => fn ($q) => $q->orderBy('step')->orderBy('id')]);
+
+        return view('dashboard.runs.detail', ['run' => $run]);
     }
 
     public function tools(Request $request, ToolRegistry $registry): View

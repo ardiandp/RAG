@@ -83,6 +83,7 @@ tr:last-child td { border-bottom: none; }
 .badge-denied { background: rgba(240, 180, 41, .15); color: var(--warn); }
 .badge-indexed { background: rgba(53, 199, 122, .15); color: var(--ok); }
 .badge-indexing { background: rgba(240, 180, 41, .15); color: var(--warn); }
+.badge-pending { background: rgba(139, 150, 168, .15); color: var(--muted); }
 
 /* Forms */
 label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }

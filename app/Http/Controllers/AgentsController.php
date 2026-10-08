@@ -66,15 +66,16 @@ class AgentsController extends Controller
 
     public function toggle(Agent $agent, AuditService $audit): RedirectResponse
     {
-        $agent->update(['is_active' => !$agent->is_active]);
+        $agent->is_active = !$agent->is_active;
+        $agent->save();
 
         $audit->log('agent.toggled', null, [
             'agent_id' => $agent->id,
-            'is_active' => !$agent->is_active,
+            'is_active' => $agent->is_active,
         ]);
 
         return redirect('/dashboard/agents')
-            ->with('status', "Agent \"{$agent->name}\" di-".(!$agent->is_active ? 'nonaktifkan' : 'aktifkan').'.');
+            ->with('status', "Agent \"{$agent->name}\" di-".($agent->is_active ? 'aktifkan' : 'nonaktifkan').'.');
     }
 
     public function destroy(Agent $agent, AuditService $audit): RedirectResponse

@@ -25,7 +25,7 @@ class AgentRunner
     ) {}
 
     /**
-     * @param  array{message: string, conversation_id?: int, agent_id?: int, user_id?: int}  $input
+     * @param  array{message: string, conversation_id?: int, agent_id?: int, user_id?: int, file_name?: string, file_excerpt?: string}  $input
      * @return array{answer: string, run_id: int, conversation_id: int, status: string, steps: int}
      */
     public function run(array $input): array
@@ -67,10 +67,21 @@ class AgentRunner
             'run_id' => $run->id,
         ]);
 
-        $conversation->messages()->create([
+        $userMessage = [
             'role' => 'user',
             'content' => $message,
-        ]);
+        ];
+
+        $metadata = [];
+
+        if (! empty($input['file_excerpt'])) {
+            $metadata = array_filter([
+                'file' => $input['file_name'] ?? null,
+                'file_excerpt' => $input['file_excerpt'],
+            ]);
+        }
+
+        $conversation->messages()->create($userMessage + ['metadata' => $metadata === [] ? null : $metadata]);
 
         $history = $this->buildHistory($conversation, $agent);
         $tools = collect($this->registry->schemas())
@@ -204,9 +215,18 @@ class AgentRunner
                     return;
                 }
 
+                $content = (string) $message->content;
+
+                $excerpt = data_get($message->metadata, 'file_excerpt');
+
+                if (is_string($excerpt) && $excerpt !== '') {
+                    $fileName = data_get($message->metadata, 'file', 'lampiran');
+                    $content = "[Berkas terlampir: {$fileName}]\n{$excerpt}\n\n".$content;
+                }
+
                 $history[] = [
                     'role' => $message->role,
-                    'content' => (string) $message->content,
+                    'content' => $content,
                 ];
             });
 

@@ -20,7 +20,7 @@
         <tbody>
             @forelse ($runs as $run)
                 <tr>
-                    <td>#{{ $run->id }}</td>
+                    <td><a href="/dashboard/runs/{{ $run->id }}">#{{ $run->id }}</a></td>
                     <td><span class="badge badge-{{ $run->status }}">{{ $run->status }}</span></td>
                     <td class="truncate">{{ $run->input }}</td>
                     <td>

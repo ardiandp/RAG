@@ -58,6 +58,40 @@ class WebChatTest extends TestCase
     }
 
     #[Test]
+    public function a_chat_can_include_an_uploaded_file_excerpt_in_the_prompt(): void
+    {
+        $user = User::factory()->create(['role' => 'user']);
+
+        $captured = [];
+        Http::fake(function ($request) use (&$captured) {
+            if (str_contains($request->url(), '/api/chat')) {
+                $captured[] = $request->data()['messages'];
+
+                return Http::response([
+                    'message' => ['role' => 'assistant', 'content' => 'Batas cuti tahunan adalah 12 hari.'],
+                    'done' => true,
+                ]);
+            }
+
+            return Http::response(['embeddings' => []]);
+        });
+
+        $response = $this->actingAs($user)->postJson('/dashboard/chat', [
+            'message' => 'Berapa batas cuti tahunan?',
+            'file' => \Illuminate\Http\UploadedFile::fake()->createWithContent('sop.txt', 'Cuti tahunan diberikan sebanyak 12 hari per tahun.'),
+        ]);
+
+        $response->assertOk()->assertJsonPath('answer', 'Batas cuti tahunan adalah 12 hari.');
+
+        $lastMessage = end($captured[0]);
+        $this->assertStringContainsString('Cuti tahunan diberikan sebanyak 12 hari per tahun.', end($captured[0])['content']);
+
+        $message = Conversation::sole()->messages()->where('role', 'user')->sole();
+        $this->assertSame('sop.txt', $message->metadata['file']);
+        $this->assertStringContainsString('Cuti tahunan', $message->metadata['file_excerpt']);
+    }
+
+    #[Test]
     public function it_continues_a_conversation_owned_by_the_user(): void
     {
         $user = User::factory()->create(['role' => 'user']);

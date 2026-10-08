@@ -40,9 +40,12 @@
                 </div>
             @endif
 
-            <form id="chat-form" class="chat-input">
+            <form id="chat-form" class="chat-input" enctype="multipart/form-data">
                 <input type="text" id="chat-message" name="message" placeholder="Tulis pesan..." autocomplete="off">
                 <input type="hidden" id="chat-conversation" value="{{ $conversation?->id ?? '' }}">
+                <input type="file" id="chat-file" accept=".txt,.md,.markdown,.pdf,.docx" hidden>
+                <label for="chat-file" class="btn" title="Lampirkan berkas">📎</label>
+                <span id="chat-file-name" class="muted"></span>
                 <button type="submit" class="btn btn-primary">Kirim</button>
             </form>
 
@@ -53,7 +56,13 @@
     <script>
         const form = document.getElementById('chat-form');
         const input = document.getElementById('chat-message');
+        const fileInput = document.getElementById('chat-file');
+        const fileName = document.getElementById('chat-file-name');
         const convField = document.getElementById('chat-conversation');
+
+        fileInput.addEventListener('change', () => {
+            fileName.textContent = fileInput.files.length ? fileInput.files[0].name : '';
+        });
         const thread = document.querySelector('.chat-thread');
         const errorBox = document.getElementById('chat-error');
         const csrf = "{{ csrf_token() }}";
@@ -96,20 +105,22 @@
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             const message = input.value.trim();
-            if (!message) return;
+            const file = fileInput.files[0] || null;
+            if (!message && !file) return;
 
             errorBox.hidden = true;
             input.disabled = true;
 
-            const body = new URLSearchParams();
-            body.append('message', message);
+            const body = new FormData();
+            body.append('message', message || '(analisis berkas)');
             if (convField.value) body.append('conversation_id', convField.value);
+            if (file) body.append('file', file);
 
             try {
                 const response = await fetch('/dashboard/chat', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-                    body: body.toString(),
+                    headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                    body: body,
                 });
 
                 const data = await response.json();
@@ -121,13 +132,16 @@
                 }
 
                 input.value = '';
+                fileInput.value = '';
+                fileName.textContent = '';
 
                 if (!convField.value) {
                     window.location.href = '/dashboard/chat/' + data.conversation_id;
                     return;
                 }
 
-                thread.append(bubble('user', message), stepsBlock(data.tool_calls), bubble('assistant', data.answer));
+                const displayMessage = file ? message + ' 📎 ' + file.name : message;
+                thread.append(bubble('user', displayMessage), stepsBlock(data.tool_calls), bubble('assistant', data.answer));
                 thread.scrollTop = thread.scrollHeight;
             } catch (e) {
                 errorBox.textContent = 'Gagal terhubung ke server.';

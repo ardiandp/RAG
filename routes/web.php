@@ -24,6 +24,7 @@ Route::middleware('auth')->prefix('dashboard')->group(function () {
     Route::get('/conversations', [DashboardController::class, 'conversations']);
     Route::get('/conversations/{conversation}', [DashboardController::class, 'conversation']);
     Route::get('/runs', [DashboardController::class, 'runs']);
+    Route::get('/runs/{run}', [DashboardController::class, 'runShow']);
     Route::get('/tools', [DashboardController::class, 'tools']);
     Route::get('/knowledge', [DashboardController::class, 'knowledge']);
     Route::get('/settings', [SettingsController::class, 'index']);
